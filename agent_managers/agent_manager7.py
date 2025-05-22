@@ -28,19 +28,21 @@ from llama_index.core.agent.workflow.workflow_events import AgentSetup, AgentOut
 from llama_index.core.workflow import Context, step
 from llama_index.core.llms import ChatMessage
 from llama_index.core.memory import Memory
-from .custom_react import CustomReActAgent
+from ..custom_react import CustomReActAgent
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from .prompts import ROOT_PROMPT_TEMPLATE, NEWS_ANALYSIS_PROMPT_TEMPLATE, RESEARCH_PROMPT_TEMPLATE
+from ..prompts import ROOT_PROMPT_TEMPLATE, NEWS_ANALYSIS_PROMPT_TEMPLATE, RESEARCH_PROMPT_TEMPLATE
 from tool_desc import *
-from llama_index.core.bridge.pydantic import PrivateAttr
 
 
 dotenv.load_dotenv()
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL')
-ollama_llm = Ollama(model=OLLAMA_MODEL, request_timeout=60.0, base_url="http://localhost:11434" )
+ollama_llm = Ollama(
+    model=OLLAMA_MODEL, 
+    request_timeout=60.0, 
+    base_url="http://localhost:11434" )
 
 
 
@@ -77,23 +79,26 @@ class AgentManager:
         키워드 확장을 위한 Query Expansion을 수행합니다.
         """
         few_shot_prompt = f"""
-            검색 쿼리에서 주요 키워드를 뽑고 이를 확장하여 최대 3가지 키워드만 만드세요. 
+            검색 쿼리에서 주요 키워드를 뽑고 이를 확장하여 최대 5가지 키워드만 만드세요. 
             콤마로 구분하여 출력하세요. 너무 일반적이지 않고 중심 키워드와 연관된 키워드여야 합니다.
+            확장 결과는 주요 키워드를 포함한 키워드 목록이어야 합니다.
             
             예시: 
-                쿼리: 대한민국 대선
-                확장: 대통령 후보, 대선 여론조사, 대통령 후보 지지율, 대통령 후보 정책비교
+                쿼리: 대한민국 대선에 대해 여론을 조사하고 싶어.
+                주요 키워드 : 대한민국 대선
+                확장 결과: 대한민국 대선, 대통령 후보, 대선 여론조사, 대통령 후보 지지율, 대통령 후보 정책비교
 
-                쿼리: 이재명
-                확장: 이재명 후보, 이재명 정책, 이재명 지지율, 이재명 여론조사
+                쿼리: 이재명의 정치 경력에 대한 리서치를 해줘
+                주요 키워드 : 이재명 정치 경력
+                확장 결과: 이재명 정치 경력, 이재명 후보, 이재명 정책, 이재명 지지율, 이재명 여론조사
 
-                쿼리: 치즈 만드는법
-                확장: 치즈 만드는 방법, 치즈 생산과정, 수제 치즈 만드는법, 모짜렐라 치즈 만드는법, 크림치즈 만드는법, 간단한 치즈 만드는법
-
+                쿼리: 치즈 만드는법을 알려주세요
+                주요 키워드 : 치즈 만드는법
+                확장 결과: 치즈 만드는 방법, 치즈 생산과정, 수제 치즈 만드는법, 모짜렐라 치즈 만드는법, 크림치즈 만드는법, 간단한 치즈 만드는법
 
 
             쿼리: "{query}"
-            확장: 
+            확장 결과: 
             """
         
 
@@ -236,14 +241,13 @@ class AgentManager:
                              
 
         # docs 발췌 : Lastly, there are cases (like human-in-the-loop) where you will need to provide both the Context (to resume the workflow) and the Memory (to store the chat history). 
-        memory = Memory.from_defaults(session_id="my_session", token_limit=40000)
-        chat_history = []
-
+        # memory = Memory.from_defaults(session_id="my_session", token_limit=40000)
+        
         root_llm = Ollama(model=OLLAMA_MODEL, base_url="http://localhost:11434", temperature=0.1, request_timeout=30.0)
+        
         root_agent = CustomReActAgent(
             name="RootAgent",
             description="사용자 질의를 분석하여 적절한 에이전트를 사용자에게 추천하세요.",
-            memory=memory,
             system_prompt=ROOT_PROMPT_TEMPLATE.format(
                 tools='\n'.join(tool_desc),
                 report_writing_prompt=REPORT_WRITING_PROMPT
@@ -288,7 +292,7 @@ class AgentManager:
 
         
         initial_state = {
-            "research_notes": {},
+            "research_notes": [],
             "query_expansion_results": [],
             "report_content": "",
             "metadata": {
@@ -317,11 +321,10 @@ class AgentManager:
             agents=[root_agent, news_analysis_agent, research_agent], # root_agent, research_agent, 
             root_agent=root_agent.name,
             initial_state=initial_state,
+            
             # handoff_prompt=HANDOFF_PROMPT,  
             # handoff_output_prompt=HANDOFF_OUTPUT_PROMPT, 
         )
-
+       
         
-        
-        
-        return workflow, memory
+        return workflow
